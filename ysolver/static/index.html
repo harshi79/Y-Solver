@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Y-Solver · self-hosted CAPTCHA API</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #131a26; --panel-2: #182131; --line: #223047;
+    --text: #e7edf7; --muted: #8fa0b8; --accent: #4ade80; --accent-2: #38bdf8;
+    --warn: #fbbf24; --bad: #f87171; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.55 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 26px 24px 18px; border-bottom: 1px solid var(--line);
+           background: linear-gradient(180deg, #0e1520, #0b0f17); }
+  h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -0.3px; }
+  h1 span { color: var(--accent); }
+  .tagline { color: var(--muted); margin: 0; }
+  main { max-width: 1080px; margin: 0 auto; padding: 22px 18px 60px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+           gap: 10px; margin: 18px 0 24px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+          padding: 12px 14px; }
+  .stat .k { color: var(--muted); font-size: 12px; text-transform: uppercase;
+             letter-spacing: .06em; }
+  .stat .v { font-size: 20px; font-weight: 600; margin-top: 4px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tabs button { background: transparent; color: var(--muted); border: 1px solid var(--line);
+                 padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .tabs button.active { color: var(--text); border-color: var(--accent);
+                        background: rgba(74, 222, 128, .08); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+           padding: 18px; display: none; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+  button.act { background: var(--accent); color: #06210f; border: 0; font-weight: 600;
+               padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  button.act.secondary { background: var(--panel-2); color: var(--text);
+                         border: 1px solid var(--line); }
+  button.act:disabled { opacity: .55; cursor: progress; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px;
+          text-align: center; color: var(--muted); cursor: pointer; margin-top: 12px; }
+  .drop.hover { border-color: var(--accent); color: var(--text); }
+  .frame { background: #fff; border-radius: 8px; padding: 6px; display: inline-block;
+           min-width: 200px; min-height: 70px; text-align: center; }
+  .frame img { display: block; image-rendering: pixelated; max-width: 100%; }
+  .result { font-family: var(--mono); font-size: 15px; margin-top: 12px; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px;
+          font-weight: 600; }
+  .pill.ready, .pill.ok { background: rgba(74,222,128,.15); color: var(--accent); }
+  .pill.pending, .pill.processing { background: rgba(251,191,36,.15); color: var(--warn); }
+  .pill.failed { background: rgba(248,113,113,.15); color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; }
+  code, pre { font-family: var(--mono); font-size: 13px; }
+  pre { background: #0a0e15; border: 1px solid var(--line); border-radius: 10px;
+        padding: 14px; overflow-x: auto; }
+  .engines { margin-top: 10px; font-family: var(--mono); font-size: 13px; }
+  .engines div { padding: 2px 0; }
+  .ok-dot { color: var(--accent); } .no-dot { color: var(--muted); }
+  a { color: var(--accent-2); }
+  .hint { color: var(--muted); font-size: 13px; }
+  .field { background: #0a0e15; border: 1px solid var(--line); color: var(--text);
+           border-radius: 8px; padding: 8px 10px; font-family: var(--mono); font-size: 13px;
+           min-width: 70px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Y</span>-Solver <span style="color:var(--muted);font-size:14px;font-weight:400">
+      · free self-hosted CAPTCHA solving API</span></h1>
+  <p class="tagline">Drop-in for the paid solvers' HTTP API (<code>in.php</code>/<code>res.php</code>
+     and <code>createTask</code>/<code>getTaskResult</code>). Everything runs on this machine —
+     no fees, no quota, no data leaving your box.</p>
+</header>
+
+<main>
+  <section class="stats" id="stats">
+    <div class="stat"><div class="k">Status</div><div class="v" id="s-status">…</div></div>
+    <div class="stat"><div class="k">Backend</div><div class="v" id="s-backend">…</div></div>
+    <div class="stat"><div class="k">Solved</div><div class="v" id="s-solved">0</div></div>
+    <div class="stat"><div class="k">Failed</div><div class="v" id="s-failed">0</div></div>
+    <div class="stat"><div class="k">Avg solve</div><div class="v" id="s-avg">–</div></div>
+    <div class="stat"><div class="k">Queue</div><div class="v" id="s-queue">0</div></div>
+    <div class="stat"><div class="k">Keys</div><div class="v" id="s-keys">…</div></div>
+  </section>
+
+  <nav class="tabs">
+    <button data-tab="play" class="active">Try it</button>
+    <button data-tab="snippets">Client snippets</button>
+    <button data-tab="jobs">Recent jobs</button>
+    <button data-tab="teach">Teach it</button>
+    <button data-tab="api">Endpoints</button>
+  </nav>
+
+  <section class="panel active" id="tab-play">
+    <div class="row">
+      <div>
+        <button class="act" id="gen">Generate sample</button>
+        <button class="act secondary" id="solve" disabled>Solve it</button>
+        <div class="drop" id="drop">
+          …or drop a CAPTCHA image here / click to pick a file
+          <input type="file" id="file" accept="image/*" hidden />
+        </div>
+        <p class="hint">Samples are generated locally by <code>ysolver.synth</code>, so the ground
+           truth is known — a real end-to-end check of the pipeline.</p>
+      </div>
+      <div style="flex:1; min-width: 260px">
+        <div class="frame" id="frame"><img id="img" alt="captcha preview" src="" /></div>
+        <div class="result" id="result">No captcha loaded yet.</div>
+        <div class="engines" id="engines"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="tab-snippets">
+    <h3 style="margin-top:0">Point an existing client at this server</h3>
+    <p class="hint">Nothing else changes: same parameters, same responses. Replace
+       <code>https://api.2captcha.com</code> with <code>http://localhost:8000</code>.</p>
+    <h4>curl — classic form API</h4>
+    <pre>curl -s "http://localhost:8000/in.php" \
+  -d "key=demo" -d "method=post" \
+  -F "file=@captcha.png"
+# → OK|248173905
+
+curl -s "http://localhost:8000/res.php?key=demo&amp;action=get&amp;id=248173905"
+# → OK|a7f3k     (or CAPCHA_NOT_READY while it is queued)</pre>
+    <h4>Python — JSON task API</h4>
+    <pre>import base64, requests, time
+
+BASE = "http://localhost:8000"
+body = base64.b64encode(open("captcha.png", "rb").read()).decode()
+
+task = requests.post(f"{BASE}/createTask", json={
+    "clientKey": "demo",
+    "task": {"type": "ImageToTextTask", "body": body},
+}).json()["taskId"]
+
+while True:
+    res = requests.post(f"{BASE}/getTaskResult",
+                        json={"clientKey": "demo", "taskId": task}).json()
+    if res["status"] == "ready":
+        print(res["solution"]["text"]); break
+    time.sleep(0.5)</pre>
+    <h4>One-liner helpers</h4>
+    <pre># native one-shot endpoint: upload and get the text straight back
+curl -s "http://localhost:8000/api/solve?key=demo&amp;body=$(base64 -w0 captcha.png)"
+
+# grab a generated test captcha with its ground-truth label
+curl -s "http://localhost:8000/api/sample?length=5"</pre>
+  </section>
+
+  <section class="panel" id="tab-jobs">
+    <table>
+      <thead><tr><th>Job</th><th>Status</th><th>Text</th><th>Backend</th>
+        <th>Solve</th><th>Key</th></tr></thead>
+      <tbody id="jobs"></tbody>
+    </table>
+    <p class="hint">Only the last 25 jobs are listed; results are kept
+       <span id="ttl">–</span> then deleted.</p>
+  </section>
+
+  <section class="panel" id="tab-teach">
+    <div class="row">
+      <div style="flex:1; min-width:280px">
+        <h3 style="margin-top:0">Teach it your captchas</h3>
+        <p class="hint">Y-Solver queues captchas it failed, captchas it was unsure about, and a
+           random slice of the rest. Type what you see and the model learns
+           <em>your</em> renderer. Nothing leaves this machine, and the humans here are
+           you and your team — never a crowd.</p>
+        <div class="frame" id="teach-frame" style="min-width:200px">
+          <img id="teach-img" alt="captcha to label" src="" />
+        </div>
+        <div style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+          <input class="field" id="teach-input" placeholder="type the characters"
+                 autocomplete="off" spellcheck="false" style="min-width:170px" />
+          <button class="act" id="teach-save" disabled>Save label</button>
+          <button class="act secondary" id="teach-skip" disabled>Unreadable</button>
+          <button class="act secondary" id="teach-refresh">Next sample</button>
+        </div>
+        <div class="result" id="teach-status">Loading the queue…</div>
+        <p class="hint" id="teach-queue"></p>
+      </div>
+      <div style="min-width:260px">
+        <h4 style="margin-top:0">Progress</h4>
+        <div class="engines" id="teach-stats"></div>
+        <h4>Train</h4>
+        <p class="hint">When you have a few dozen labels:</p>
+        <pre>python scripts/train.py --holdout 0.25</pre>
+        <p class="hint">It trains, scores every engine on held-out samples, and only lets the
+           learned model take over if it actually wins. The scoreboard is printed —
+           read it before believing anything.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="tab-api">
+    <table>
+      <thead><tr><th>Endpoint</th><th>Method</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>/in.php</code></td><td>GET · POST</td>
+            <td>Submit a captcha (multipart <code>file</code>, <code>body</code>=base64, or raw image body)</td></tr>
+        <tr><td><code>/res.php</code></td><td>GET · POST</td>
+            <td>Poll result · <code>action=getbalance</code> · <code>action=reportbad</code></td></tr>
+        <tr><td><code>/createTask</code></td><td>POST</td>
+            <td>JSON task API, <code>task.type=ImageToTextTask</code> (also flat body params)</td></tr>
+        <tr><td><code>/getTaskResult</code></td><td>POST · GET</td>
+            <td><code>{"status":"processing"|"ready","solution":{"text":…}}</code></td></tr>
+        <tr><td><code>/api/solve</code></td><td>GET · POST</td>
+            <td>Native one-shot solve (<code>wait=false</code> for async)</td></tr>
+        <tr><td><code>/api/jobs</code> · <code>/api/jobs/{id}</code></td><td>GET</td>
+            <td>Inspect recent jobs</td></tr>
+        <tr><td><code>/api/stats</code> · <code>/healthz</code></td><td>GET</td>
+            <td>Counters, engine availability, queue depth</td></tr>
+        <tr><td><code>/api/sample</code></td><td>GET</td>
+            <td>Generate a test captcha with its label</td></tr>
+        <tr><td><code>/api/labels/pending</code></td><td>GET</td>
+            <td>Next sample(s) for a human to label (with the image)</td></tr>
+        <tr><td><code>/api/labels</code></td><td>POST</td>
+            <td>File a human label: <code>id</code> + <code>text</code>, or <code>id</code> + <code>skip=1</code></td></tr>
+        <tr><td><code>/api/labels/stats</code></td><td>GET</td>
+            <td>Labelled / pending / skipped counts and the current model</td></tr>
+        <tr><td><code>/api/scope</code></td><td>GET</td>
+            <td>What this server can and cannot solve (machine-readable)</td></tr>
+        <tr><td><code>/docs</code></td><td>GET</td>
+            <td>Interactive OpenAPI schema</td></tr>
+      </tbody>
+    </table>
+    <h4>Honest scope</h4>
+    <p class="hint">Y-Solver reads <strong>text-in-image</strong> captchas only. Interactive
+       challenges (reCAPTCHA, hCaptcha, Turnstile, GeeTest…) are refused with
+       <code>ERROR_METHOD_NOT_SUPPORTED</code> instead of pretending — see
+       <code>docs/scope.md</code>. Nothing here bypasses a challenge that a script was never able
+       to read in the first place.</p>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let sampleLabel = null;
+
+document.querySelectorAll('.tabs button').forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+    button.classList.add('active');
+    $('tab-' + button.dataset.tab).classList.add('active');
+  };
+});
+
+async function refresh() {
+  try {
+    const stats = await (await fetch('api/stats')).json();
+    $('s-status').textContent = 'online';
+    $('s-backend').textContent = stats.backend;
+    $('s-solved').textContent = stats.solved;
+    $('s-failed').textContent = stats.failed;
+    $('s-avg').textContent = stats.avgSolveMs == null ? '–' : stats.avgSolveMs + ' ms';
+    $('s-queue').textContent = stats.queue;
+    $('s-keys').textContent = stats.requireKey ? 'required' : 'open';
+    $('ttl').textContent = stats.retentionS + 's';
+    $('engines').innerHTML = stats.engines.map((e) =>
+      `<div><span class="${e.available ? 'ok-dot' : 'no-dot'}">${e.available ? '●' : '○'}</span>
+         ${e.name} <span class="hint">${e.description}</span></div>`).join('');
+
+    const jobs = await (await fetch('api/jobs?limit=25')).json();
+    $('jobs').innerHTML = jobs.jobs.map((j) => `<tr>
+        <td><code>${j.id}</code></td>
+        <td><span class="pill ${j.status}">${j.status}</span></td>
+        <td><code>${j.text ?? j.errorCode ?? ''}</code></td>
+        <td>${j.backend ?? '–'}</td>
+        <td>${j.solveMs == null ? '–' : j.solveMs + ' ms'}</td>
+        <td class="hint">${j.keyHint || '–'}</td></tr>`).join('') ||
+      '<tr><td colspan="6" class="hint">No jobs yet — solve a sample to see traffic.</td></tr>';
+  } catch (err) {
+    $('s-status').textContent = 'offline';
+  }
+}
+
+async function generate() {
+  const data = await (await fetch('api/sample?length=5')).json();
+  sampleLabel = data.label;
+  $('img').src = 'data:image/png;base64,' + data.pngBase64;
+  $('result').innerHTML = `Sample loaded (seed <code>${data.seed}</code>) — click <b>Solve it</b>.`;
+  $('solve').disabled = false;
+}
+
+async function solve(base64, expected) {
+  const started = performance.now();
+  const response = await fetch('api/solve?key=demo&body=' + encodeURIComponent(base64));
+  const data = await response.json();
+  const elapsed = Math.round(performance.now() - started);
+  if (data.status === 'ready') {
+    const match = expected ? (data.text === expected ? ' ✅ matches ground truth'
+                                                     : ` ❌ expected <code>${expected}</code>`)
+                           : '';
+    $('result').innerHTML =
+      `Read as <b style="color:var(--accent);font-size:20px">${data.text}</b>${match}
+       <br><span class="hint">${data.solveMs} ms in the solver · ${elapsed} ms round trip ·
+       backend ${data.backend} · confidence ${data.confidence ?? 'n/a'}</span>`;
+  } else {
+    $('result').innerHTML =
+      `<b style="color:var(--bad)">${data.status}</b> ${data.errorCode ?? data.error ?? ''}`;
+  }
+  refresh();
+}
+
+$('gen').onclick = generate;
+$('solve').onclick = () => {
+  const base64 = $('img').src.split(',')[1];
+  if (base64) solve(base64, sampleLabel);
+};
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    sampleLabel = null;
+    $('img').src = reader.result;
+    $('solve').disabled = false;
+    $('result').textContent = 'Image loaded — click Solve it.';
+  };
+  reader.readAsDataURL(file);
+}
+
+$('drop').onclick = () => $('file').click();
+$('file').onchange = (event) => event.target.files[0] && loadFile(event.target.files[0]);
+['dragenter', 'dragover'].forEach((type) =>
+  $('drop').addEventListener(type, (e) => { e.preventDefault(); $('drop').classList.add('hover'); }));
+['dragleave', 'drop'].forEach((type) =>
+  $('drop').addEventListener(type, (e) => { e.preventDefault(); $('drop').classList.remove('hover'); }));
+$('drop').addEventListener('drop', (e) => e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]));
+
+
+// ---------------------------------------------------------------- teach it
+let teachId = null;
+
+async function teachNext() {
+  try {
+    const data = await (await fetch('api/labels/pending?limit=1')).json();
+    const stats = await (await fetch('api/labels/stats')).json();
+    $('teach-stats').innerHTML =
+      `<div>labelled <b>${stats.labeled}</b></div>
+       <div>waiting <b>${stats.pending}</b></div>
+       <div>skipped <b>${stats.skipped}</b></div>` +
+      (stats.model
+        ? `<div style="margin-top:8px">model: <b>${stats.model.glyphs}</b> glyphs ·
+             prefers <b>${stats.model.preferred ?? 'n/a'}</b></div>`
+        : '<div class="hint" style="margin-top:8px">no trained model yet</div>');
+    $('teach-queue').textContent = stats.pending
+      ? `${stats.pending} sample(s) queued for labelling.`
+      : 'Queue empty — solve some captchas first (failures and uncertain ones are queued automatically).';
+
+    if (!data.items.length) {
+      teachId = null;
+      $('teach-img').removeAttribute('src');
+      $('teach-status').innerHTML =
+        '<span class="hint">Nothing to label right now — solve a few captchas first.</span>';
+      $('teach-save').disabled = $('teach-skip').disabled = true;
+      return;
+    }
+    const item = data.items[0];
+    teachId = item.id;
+    $('teach-img').src = 'data:image/png;base64,' + item.pngBase64;
+    $('teach-input').value = '';
+    $('teach-input').focus();
+    $('teach-save').disabled = $('teach-skip').disabled = false;
+    $('teach-status').innerHTML = item.modelText
+      ? `The model guessed <code>${item.modelText}</code>` +
+        (item.confidence != null ? ` (${(item.confidence * 100).toFixed(0)}% sure)` : '') +
+        ` · reason: ${item.reason}. Correct it or confirm it.`
+      : `<span class="hint">Could not read this one (${item.reason}). Type what you see.</span>`;
+  } catch (err) {
+    $('teach-status').textContent = 'Could not reach the label queue.';
+  }
+}
+
+async function teachSubmit(text) {
+  if (teachId === null) return;
+  $('teach-save').disabled = $('teach-skip').disabled = true;
+  const body = new URLSearchParams({ key: 'demo', id: String(teachId) });
+  if (text) body.set('text', text);
+  else body.set('skip', '1');
+  const response = await fetch('api/labels', { method: 'POST', body });
+  const payload = await response.json();
+  $('teach-status').innerHTML = payload.status === 'error'
+    ? `<span style="color:var(--bad)">${payload.message ?? payload.error}</span>`
+    : `Saved <code>${text || '(unreadable)'}</code> — thanks.`;
+  teachNext();
+}
+
+$('teach-save').onclick = () => teachSubmit($('teach-input').value.trim());
+$('teach-skip').onclick = () => teachSubmit('');
+$('teach-refresh').onclick = teachNext;
+$('teach-input').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') teachSubmit($('teach-input').value.trim());
+});
+
+generate();
+refresh();
+teachNext();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>

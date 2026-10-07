@@ -1,0 +1,75 @@
+[project]
+name = "ysolver"
+version = "0.1.0"
+description = "Free, self-hosted CAPTCHA solving API. Drop-in compatible with the paid solver services' HTTP contract, but runs entirely on your own machine at zero cost."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Y-Solver contributors" }]
+keywords = ["captcha", "ocr", "self-hosted", "fastapi", "automation", "testing"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Testing",
+]
+
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "python-multipart>=0.0.9",
+  "pillow>=10.0",
+  "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Best accuracy on classic distorted-text captchas. Model runs offline on CPU.
+ddddocr = ["ddddocr>=1.5"]
+# Uses a local tesseract binary (apt install tesseract-ocr).
+tesseract = ["pytesseract>=0.3.10"]
+dev = ["pytest>=7.4", "httpx>=0.27", "ruff>=0.4"]
+
+[project.scripts]
+ysolver = "ysolver.main:main"
+
+[project.urls]
+Homepage = "https://github.com/harshi79/Y-Solver"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ysolver*"]
+
+[tool.setuptools.package-data]
+ysolver = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = ["ysolver/static"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "SIM", "RUF"]
+# Optional[...] is kept deliberately: it reads fine on 3.9 and avoids sweeping
+# annotation churn in a project that still supports it.
+ignore = [
+  "E501",    # long lines are handled by the formatter
+  "B008",    # FastAPI dependency calls in defaults are idiomatic
+  "BLE001",  # broad excepts are intentional around third-party OCR engines
+  "RUF012",  # mutable class attrs in dataclasses are fine here
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ysolver"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "F401"]
+"scripts/*" = ["E402"]
+"examples/*" = ["E402"]

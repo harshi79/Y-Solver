@@ -1,0 +1,26 @@
+services:
+  ysolver:
+    build: .
+    image: ysolver:latest
+    container_name: ysolver
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # CHANGE THIS before exposing the port to anything.
+      YSOLVER_API_KEYS: "${YSOLVER_API_KEYS:-demo}"
+      # One worker per vCPU is a good default; OCR is CPU-bound.
+      YSOLVER_WORKERS: "${YSOLVER_WORKERS:-4}"
+      YSOLVER_DB: /data/ysolver.db
+      YSOLVER_LOG_LEVEL: "${YSOLVER_LOG_LEVEL:-info}"
+    volumes:
+      - ysolver-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  ysolver-data:
